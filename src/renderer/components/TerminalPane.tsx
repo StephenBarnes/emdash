@@ -2,6 +2,48 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { log } from '../lib/logger';
 
+const SNAPSHOT_LIMIT_BYTES = 512 * 1024; // 512 KB per terminal snapshot
+type SnapshotChunk = { text: string; bytes: number };
+type SnapshotEntry = { chunks: SnapshotChunk[]; bytes: number };
+
+const terminalSnapshots = new Map<string, SnapshotEntry>();
+const textEncoder =
+  typeof TextEncoder !== 'undefined' ? new TextEncoder() : (null as TextEncoder | null);
+
+const encodeBytes = (text: string): number => {
+  if (!text) return 0;
+  if (textEncoder) return textEncoder.encode(text).length;
+  // Fallback approximation if TextEncoder is unavailable
+  return [...text].length;
+};
+
+const appendSnapshotChunk = (id: string, text: string) => {
+  if (!text) return;
+  const entry = terminalSnapshots.get(id) ?? { chunks: [], bytes: 0 };
+  const chunk: SnapshotChunk = { text, bytes: encodeBytes(text) };
+  if (chunk.bytes === 0) return;
+  entry.chunks.push(chunk);
+  entry.bytes += chunk.bytes;
+
+  while (entry.bytes > SNAPSHOT_LIMIT_BYTES && entry.chunks.length > 1) {
+    const removed = entry.chunks.shift();
+    if (removed) entry.bytes -= removed.bytes;
+  }
+
+  terminalSnapshots.set(id, entry);
+};
+
+const getSnapshotText = (id: string): string => {
+  const entry = terminalSnapshots.get(id);
+  if (!entry) return '';
+  if (entry.chunks.length === 1) return entry.chunks[0]?.text ?? '';
+  return entry.chunks.map((c) => c.text).join('');
+};
+
+const clearSnapshot = (id: string) => {
+  terminalSnapshots.delete(id);
+};
+
 type Props = {
   id: string;
   cwd?: string;
@@ -43,6 +85,7 @@ const TerminalPaneComponent: React.FC<Props> = ({
 
   useEffect(() => {
     pendingOscRef.current = '';
+    disposeFns.current = [];
     const el = containerRef.current;
     if (!el) {
       log.error('TerminalPane: No container element found');
@@ -210,11 +253,35 @@ const TerminalPaneComponent: React.FC<Props> = ({
       }
     };
 
+    let historyReceived = false;
+    let historyReplayedViaFallback = false;
+
+    const handleIncoming = (data: string, isHistory: boolean) => {
+      const sanitized = sanitizeEchoArtifacts(data);
+      if (!sanitized) return;
+
+      if (isHistory && historyReplayedViaFallback) {
+        const cached = getSnapshotText(id);
+        if (cached && sanitized.startsWith(cached)) {
+          const diff = sanitized.slice(cached.length);
+          if (diff) {
+            term.write(diff);
+            appendSnapshotChunk(id, diff);
+          }
+          return;
+        }
+      }
+
+      term.write(sanitized);
+      appendSnapshotChunk(id, sanitized);
+    };
+
     const offHistory = (window as any).electronAPI.onPtyHistory?.(id, (data: string) => {
-      term.write(sanitizeEchoArtifacts(data));
+      historyReceived = true;
+      handleIncoming(data, true);
     });
     const offData = window.electronAPI.onPtyData(id, (data) => {
-      term.write(sanitizeEchoArtifacts(data));
+      handleIncoming(data, false);
     });
     const offExit = window.electronAPI.onPtyExit(id, (info) => {
       try {
@@ -241,12 +308,23 @@ const TerminalPaneComponent: React.FC<Props> = ({
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(el);
 
+    const fallbackTimer = setTimeout(() => {
+      if (!historyReceived) {
+        const cached = getSnapshotText(id);
+        if (cached) {
+          historyReplayedViaFallback = true;
+          term.write(cached);
+        }
+      }
+    }, 250);
+
     disposeFns.current.push(() => keyDisp.dispose());
     if (offHistory) disposeFns.current.push(offHistory);
     disposeFns.current.push(offData);
     disposeFns.current.push(offExit);
     disposeFns.current.push(() => keyDisp2.dispose());
     disposeFns.current.push(() => resizeObserver.disconnect());
+    disposeFns.current.push(() => clearTimeout(fallbackTimer));
 
     // Start PTY session after listeners are attached so we don't miss initial output/history
     const startTsRef = { current: Date.now() } as { current: number };
@@ -287,8 +365,10 @@ const TerminalPaneComponent: React.FC<Props> = ({
     return () => {
       if (!keepAlive) {
         window.electronAPI.ptyKill(id);
+        clearSnapshot(id);
       }
       disposeFns.current.forEach((fn) => fn());
+      disposeFns.current = [];
       term.dispose();
       termRef.current = null;
     };
