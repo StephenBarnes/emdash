@@ -28,6 +28,7 @@ import SettingsModal from './components/SettingsModal';
 import CommandPalette from './components/CommandPalette';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { usePlanToasts } from './hooks/usePlanToasts';
+import { cn } from './lib/utils';
 
 interface AppKeyboardShortcutsProps {
   showCommandPalette: boolean;
@@ -1089,15 +1090,42 @@ const AppContent: React.FC = () => {
     }
 
     if (selectedProject) {
+      const projectWorkspaces = selectedProject.workspaces ?? [];
+      const activeId = activeWorkspace?.id;
+      const workspaceSurfaces =
+        activeWorkspace && !projectWorkspaces.some((ws) => ws.id === activeWorkspace.id)
+          ? [...projectWorkspaces, activeWorkspace]
+          : projectWorkspaces;
+
       return (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {activeWorkspace ? (
-            <ChatInterface
-              workspace={activeWorkspace}
-              projectName={selectedProject.name}
-              className="min-h-0 flex-1"
-              initialProvider={activeWorkspaceProvider || undefined}
-            />
+            <div className="relative flex h-full w-full flex-1 overflow-hidden">
+              {workspaceSurfaces.map((workspace) => {
+                const isActive = workspace.id === activeId;
+                return (
+                  <div
+                    key={workspace.id}
+                    className={cn(
+                      'absolute inset-0 flex h-full w-full flex-col bg-background transition-opacity',
+                      isActive ? 'opacity-100' : 'pointer-events-none opacity-0'
+                    )}
+                    style={{ visibility: isActive ? 'visible' : 'hidden' }}
+                    aria-hidden={!isActive}
+                    data-active={isActive ? 'true' : 'false'}
+                  >
+                    <ChatInterface
+                      workspace={workspace}
+                      projectName={selectedProject.name}
+                      className="flex-1"
+                      initialProvider={
+                        isActive && activeWorkspaceProvider ? activeWorkspaceProvider : undefined
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <ProjectMainView
               project={selectedProject}
