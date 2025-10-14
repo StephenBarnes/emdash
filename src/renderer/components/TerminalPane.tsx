@@ -39,7 +39,10 @@ const TerminalPaneComponent: React.FC<Props> = ({
   const termRef = useRef<Terminal | null>(null);
   const disposeFns = useRef<Array<() => void>>([]);
 
+  const pendingOscRef = useRef<string>('');
+
   useEffect(() => {
+    pendingOscRef.current = '';
     const el = containerRef.current;
     if (!el) {
       log.error('TerminalPane: No container element found');
@@ -131,15 +134,34 @@ const TerminalPaneComponent: React.FC<Props> = ({
 
     // Listen for history first, then live data, then start/attach to PTY
     const sanitizeEchoArtifacts = (chunk: string) => {
+      let working = '';
       try {
-        // Strip common terminal response artifacts that sometimes get echoed by TTY in cooked mode
-        // Examples observed: "1;2c" (DA response) and similar patterns.
-        // 1) Remove proper ANSI DA responses if they appear in output stream
-        let s = chunk.replace(/\x1b\[\?\d+(?:;\d+)*c/g, '');
+        // Preserve any previously buffered but incomplete OSC sequence
+        working = pendingOscRef.current + chunk;
+        pendingOscRef.current = '';
+
+        // Strip common terminal response artifacts that sometimes get echoed by TTY in cooked mode.
+        // 1) Remove ANSI Device Attributes responses (e.g., "\x1b[?1;2c")
+        working = working.replace(/\x1b\[\?\d+(?:;\d+)*c/g, '');
         // 2) Remove bare echoed fragments like "1;2c" or "24;80R" when ESC sequences were stripped by echo
-        s = s.replace(/(^|[\s>])\d+(?:;\d+)*[cR](?=$|\s)/g, '$1');
-        return s;
+        working = working.replace(/(^|[\s>])\d+(?:;\d+)*[cR](?=$|\s)/g, '$1');
+        // 3) Remove complete Operating System Command sequences (e.g., "\x1b]10;..."); these often contain color info
+        working = working.replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '');
+
+        // Keep any trailing, incomplete OSC sequence buffered for the next chunk
+        const lastOscStart = working.lastIndexOf('\x1b]');
+        if (lastOscStart !== -1) {
+          const tail = working.slice(lastOscStart);
+          if (!/(\x07|\x1b\\)/.test(tail)) {
+            pendingOscRef.current = tail;
+            working = working.slice(0, lastOscStart);
+          }
+        }
+
+        return working;
       } catch {
+        // On parser errors, fall back to the original chunk to avoid dropping data silently.
+        pendingOscRef.current = '';
         return chunk;
       }
     };
