@@ -121,6 +121,31 @@ const TerminalPaneComponent: React.FC<Props> = ({
     term.focus();
     setTimeout(() => term.focus(), 0);
 
+    const requestPasteFromSystem = async () => {
+      try {
+        term.focus();
+        if (typeof window.electronAPI?.triggerPaste === 'function') {
+          const result = await window.electronAPI.triggerPaste();
+          if (result?.success) {
+            return;
+          }
+        }
+      } catch (error) {
+        log.error('TerminalPane: triggerPaste failed', error);
+      }
+
+      try {
+        if (navigator.clipboard?.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            term.paste(text);
+          }
+        }
+      } catch (error) {
+        log.error('TerminalPane: clipboard read failed', error);
+      }
+    };
+
     const keyDisp = term.onData((data) => {
       log.debug('xterm onData', JSON.stringify(data));
       try {
@@ -130,6 +155,25 @@ const TerminalPaneComponent: React.FC<Props> = ({
     });
     const keyDisp2 = term.onKey((ev) => {
       log.debug('xterm onKey', ev.key);
+    });
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.type !== 'keydown') {
+        return true;
+      }
+      const rawKey = ev.key;
+      const key = typeof rawKey === 'string' ? rawKey.toLowerCase() : '';
+      const isPasteCombo = (ev.ctrlKey || ev.metaKey) && !ev.altKey && key === 'v';
+      const isShiftInsert =
+        ev.shiftKey && !ev.ctrlKey && !ev.metaKey && rawKey === 'Insert';
+
+      if (isPasteCombo || isShiftInsert) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void requestPasteFromSystem();
+        return false;
+      }
+
+      return true;
     });
 
     // Listen for history first, then live data, then start/attach to PTY
@@ -260,6 +304,14 @@ const TerminalPaneComponent: React.FC<Props> = ({
         backgroundColor: variant === 'light' ? '#ffffff' : '#1f2937',
         overflow: 'hidden',
         boxSizing: 'border-box',
+      }}
+      onContextMenu={(e) => {
+        const showMenu = window.electronAPI?.showTerminalContextMenu;
+        if (typeof showMenu === 'function') {
+          e.preventDefault();
+          termRef.current?.focus();
+          void showMenu();
+        }
       }}
       onClick={() => termRef.current?.focus()}
       onMouseDown={() => termRef.current?.focus()}

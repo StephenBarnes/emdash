@@ -4,6 +4,8 @@ declare global {
     electronAPI: {
       getVersion: () => Promise<string>;
       getPlatform: () => Promise<string>;
+      triggerPaste: () => Promise<{ success: boolean; error?: string }>;
+      showTerminalContextMenu: () => Promise<{ success: boolean; error?: string }>;
       // PTY management
       ptyStart: (opts: {
         id: string;

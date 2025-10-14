@@ -8,6 +8,8 @@ declare global {
       getAppVersion: () => Promise<string>;
       getElectronVersion: () => Promise<string>;
       getPlatform: () => Promise<string>;
+      triggerPaste: () => Promise<{ success: boolean; error?: string }>;
+      showTerminalContextMenu: () => Promise<{ success: boolean; error?: string }>;
       // Updater
       checkForUpdates: () => Promise<{ success: boolean; result?: any; error?: string }>;
       downloadUpdate: () => Promise<{ success: boolean; error?: string }>;

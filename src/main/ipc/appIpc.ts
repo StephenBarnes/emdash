@@ -1,4 +1,12 @@
-import { app, ipcMain, shell } from 'electron';
+import {
+  app,
+  ipcMain,
+  shell,
+  BrowserWindow,
+  Menu,
+  type MenuItemConstructorOptions,
+  type WebContents,
+} from 'electron';
 import { exec } from 'child_process';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -153,4 +161,33 @@ export function registerAppIpc() {
   });
   ipcMain.handle('app:getElectronVersion', () => process.versions.electron);
   ipcMain.handle('app:getPlatform', () => process.platform);
+
+  ipcMain.handle('app:triggerPaste', (event) => {
+    try {
+      event.sender.paste();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('app:showTerminalContextMenu', (event) => {
+    const sender = event.sender as WebContents & { getSelectedText?: () => string };
+    const selection = sender.getSelectedText?.() ?? '';
+    const hasSelection = typeof selection === 'string' && selection.length > 0;
+    const template: MenuItemConstructorOptions[] = [
+      {
+        role: 'copy',
+        enabled: hasSelection,
+      },
+      { type: 'separator' },
+      {
+        role: 'paste',
+      },
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    menu.popup({ window });
+    return { success: true };
+  });
 }
