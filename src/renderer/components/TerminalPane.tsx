@@ -82,6 +82,7 @@ const TerminalPaneComponent: React.FC<Props> = ({
   const disposeFns = useRef<Array<() => void>>([]);
 
   const pendingOscRef = useRef<string>('');
+  const pendingDeviceResponseRef = useRef<string>('');
 
   useEffect(() => {
     pendingOscRef.current = '';
@@ -223,19 +224,20 @@ const TerminalPaneComponent: React.FC<Props> = ({
     const sanitizeEchoArtifacts = (chunk: string) => {
       let working = '';
       try {
-        // Preserve any previously buffered but incomplete OSC sequence
-        working = pendingOscRef.current + chunk;
+        // Rehydrate any buffered but incomplete control sequences
+        working = pendingOscRef.current + pendingDeviceResponseRef.current + chunk;
         pendingOscRef.current = '';
+        pendingDeviceResponseRef.current = '';
 
         // Strip common terminal response artifacts that sometimes get echoed by TTY in cooked mode.
         // 1) Remove ANSI Device Attributes responses (e.g., "\x1b[?1;2c")
         working = working.replace(/\x1b\[\?\d+(?:;\d+)*c/g, '');
         // 2) Remove bare echoed fragments like "1;2c" or "24;80R" when ESC sequences were stripped by echo
-        working = working.replace(/(^|[\s>])\d+(?:;\d+)*[cR](?=$|\s)/g, '$1');
+        working = working.replace(/(^|[\s>])(?:\[\??)?\??\d+(?:;\d+)*[cR](?=$|\s)/g, '$1');
         // 3) Remove complete Operating System Command sequences (e.g., "\x1b]10;..."); these often contain color info
         working = working.replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '');
 
-        // Keep any trailing, incomplete OSC sequence buffered for the next chunk
+        // Buffer any trailing, incomplete OSC sequence for the next chunk
         const lastOscStart = working.lastIndexOf('\x1b]');
         if (lastOscStart !== -1) {
           const tail = working.slice(lastOscStart);
@@ -245,10 +247,18 @@ const TerminalPaneComponent: React.FC<Props> = ({
           }
         }
 
+        // Buffer trailing fragments of device attribute responses (e.g., "\x1b[?1;")
+        const incompleteDevice = working.match(/\x1b\[\??[\d;]*$/);
+        if (incompleteDevice) {
+          pendingDeviceResponseRef.current = incompleteDevice[0];
+          working = working.slice(0, working.length - incompleteDevice[0].length);
+        }
+
         return working;
       } catch {
         // On parser errors, fall back to the original chunk to avoid dropping data silently.
         pendingOscRef.current = '';
+        pendingDeviceResponseRef.current = '';
         return chunk;
       }
     };
