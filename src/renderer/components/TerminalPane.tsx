@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { log } from '../lib/logger';
+import {
+  registerTerminalFocus,
+  unregisterTerminalFocus,
+} from '../lib/terminalRegistry';
 
 const SNAPSHOT_LIMIT_BYTES = 512 * 1024; // 512 KB per terminal snapshot
 type SnapshotChunk = { text: string; bytes: number };
@@ -83,6 +87,7 @@ const TerminalPaneComponent: React.FC<Props> = ({
 
   const pendingOscRef = useRef<string>('');
   const pendingDeviceResponseRef = useRef<string>('');
+  const focusHandlerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     pendingOscRef.current = '';
@@ -164,6 +169,16 @@ const TerminalPaneComponent: React.FC<Props> = ({
     term.open(el);
     term.focus();
     setTimeout(() => term.focus(), 0);
+    const focusHandler = () => {
+      try {
+        termRef.current?.focus();
+        setTimeout(() => termRef.current?.focus(), 0);
+      } catch {
+        // ignore focus errors
+      }
+    };
+    focusHandlerRef.current = focusHandler;
+    registerTerminalFocus(id, focusHandler);
 
     const requestPasteFromSystem = async () => {
       try {
@@ -376,6 +391,12 @@ const TerminalPaneComponent: React.FC<Props> = ({
       if (!keepAlive) {
         window.electronAPI.ptyKill(id);
         clearSnapshot(id);
+      }
+      if (focusHandlerRef.current) {
+        unregisterTerminalFocus(id, focusHandlerRef.current);
+        focusHandlerRef.current = null;
+      } else {
+        unregisterTerminalFocus(id);
       }
       disposeFns.current.forEach((fn) => fn());
       disposeFns.current = [];

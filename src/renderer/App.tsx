@@ -29,6 +29,7 @@ import CommandPalette from './components/CommandPalette';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { usePlanToasts } from './hooks/usePlanToasts';
 import { cn } from './lib/utils';
+import { focusTerminalById, focusTerminalMatching } from './lib/terminalRegistry';
 
 interface AppKeyboardShortcutsProps {
   showCommandPalette: boolean;
@@ -872,10 +873,100 @@ const AppContent: React.FC = () => {
     activateProjectView(project);
   };
 
-  const handleSelectWorkspace = (workspace: Workspace) => {
+  const lastFocusedTerminalRef = useRef<'agent' | 'workspace'>('agent');
+
+  const handleSelectWorkspace = useCallback((workspace: Workspace) => {
     setActiveWorkspace(workspace);
     setActiveWorkspaceProvider(null); // Clear provider when switching workspaces
-  };
+    lastFocusedTerminalRef.current = 'agent';
+  }, []);
+
+  const focusWorkspaceTerminal = useCallback((workspaceId: string | undefined | null) => {
+    if (!workspaceId) return false;
+    const didFocus = focusTerminalById(`workspace-${workspaceId}`);
+    if (didFocus) {
+      lastFocusedTerminalRef.current = 'workspace';
+    }
+    return didFocus;
+  }, []);
+
+  const focusAgentTerminal = useCallback((workspaceId: string | undefined | null) => {
+    if (!workspaceId) return false;
+    const suffix = `-main-${workspaceId}`;
+    const didFocus = focusTerminalMatching((id) => id.endsWith(suffix));
+    if (didFocus) {
+      lastFocusedTerminalRef.current = 'agent';
+    }
+    return didFocus;
+  }, []);
+
+  const toggleTerminalFocus = useCallback(() => {
+    const workspaceId = activeWorkspace?.id;
+    if (!workspaceId) return;
+
+    if (lastFocusedTerminalRef.current === 'workspace') {
+      if (focusAgentTerminal(workspaceId)) return;
+      focusWorkspaceTerminal(workspaceId);
+    } else {
+      if (focusWorkspaceTerminal(workspaceId)) return;
+      focusAgentTerminal(workspaceId);
+    }
+  }, [activeWorkspace, focusAgentTerminal, focusWorkspaceTerminal]);
+
+  const cycleWorkspace = useCallback(
+    (direction: 1 | -1) => {
+      if (!selectedProject) return;
+      const list = selectedProject.workspaces ?? [];
+      if (!list.length) return;
+
+      const currentId = activeWorkspace?.id;
+      let currentIndex = currentId ? list.findIndex((ws) => ws.id === currentId) : -1;
+      if (currentIndex === -1) {
+        currentIndex = direction > 0 ? -1 : 0;
+      }
+      const nextIndex = (currentIndex + direction + list.length) % list.length;
+      const nextWorkspace = list[nextIndex];
+      if (!nextWorkspace) return;
+
+      handleSelectWorkspace(nextWorkspace);
+      requestAnimationFrame(() => {
+        if (!focusWorkspaceTerminal(nextWorkspace.id)) {
+          setTimeout(() => {
+            focusWorkspaceTerminal(nextWorkspace.id);
+          }, 50);
+        }
+      });
+    },
+    [selectedProject, activeWorkspace, handleSelectWorkspace, focusWorkspaceTerminal]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.key !== 'Tab') return;
+
+      const ctrlActive = event.ctrlKey && !event.metaKey && !event.altKey;
+      const altOnly = event.altKey && !event.ctrlKey && !event.metaKey;
+
+      if (ctrlActive) {
+        event.preventDefault();
+        event.stopPropagation();
+        cycleWorkspace(event.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (altOnly) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleTerminalFocus();
+      }
+    };
+
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [cycleWorkspace, toggleTerminalFocus]);
 
   const handleStartCreateWorkspaceFromSidebar = useCallback(
     (project: Project) => {
