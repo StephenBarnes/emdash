@@ -70,6 +70,7 @@ const WorkspaceTerminalPanelComponent: React.FC<Props> = ({ workspace, className
                       background: '#1f2937',
                       foreground: '#ffffff',
                       cursor: '#ffffff',
+                      cursorAccent: '#1f2937',
                       selectionBackground: '#ffffff33',
                       // Keep ANSI backgrounds matching the dark theme background
                       black: '#1f2937',
@@ -93,6 +94,7 @@ const WorkspaceTerminalPanelComponent: React.FC<Props> = ({ workspace, className
                       background: '#ffffff',
                       foreground: '#000000',
                       cursor: '#000000',
+                      cursorAccent: '#ffffff',
                       selectionBackground: '#00000033',
                       // Keep ANSI backgrounds white; force all other colors to black
                       black: '#ffffff',

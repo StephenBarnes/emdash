@@ -135,14 +135,23 @@
     color: #000000 !important;
     background-color: #ffffff !important;
   }
-  .bw-terminal .xterm .xterm-cursor.xterm-focus:not(.xterm-hidden-cursor) .xterm-cursor-block {
+  .bw-terminal .xterm .xterm-cursor-layer .xterm-cursor-block:not(.xterm-hidden-cursor),
+  .bw-terminal .xterm .xterm-cursor-layer .xterm-cursor-bar:not(.xterm-hidden-cursor),
+  .bw-terminal .xterm .xterm-cursor-layer .xterm-cursor-underline:not(.xterm-hidden-cursor) {
     background-color: #000000 !important;
+    color: #ffffff !important;
+    opacity: 1 !important;
   }
-  .bw-terminal .xterm .xterm-cursor .xterm-cursor-outline,
-  .bw-terminal .xterm .xterm-cursor .xterm-cursor-bar,
-  .bw-terminal .xterm .xterm-cursor .xterm-cursor-underline {
-    border-color: #000000 !important;
+  .bw-terminal .xterm .xterm-rows span.xterm-decoration-top,
+  .bw-terminal .xterm .xterm-rows span.xterm-decoration-bottom,
+  .bw-terminal .xterm .xterm-rows span.xterm-decoration-left,
+  .bw-terminal .xterm .xterm-rows span.xterm-decoration-right {
+    background-color: rgba(0, 0, 0, 0.32) !important;
+    color: #ffffff !important;
+  }
+  .bw-terminal .xterm .xterm-rows span.xterm-cursor {
     background-color: #000000 !important;
+    color: #ffffff !important;
   }
 
   /* Force right-sidebar terminal to dark theme: dark background and white text */
@@ -154,15 +163,24 @@
   .dark
     .bw-terminal
     .xterm
-    .xterm-cursor.xterm-focus:not(.xterm-hidden-cursor)
-    .xterm-cursor-block {
+    .xterm-cursor-layer
+    .xterm-cursor-block:not(.xterm-hidden-cursor),
+  .dark .bw-terminal .xterm .xterm-cursor-layer .xterm-cursor-bar:not(.xterm-hidden-cursor),
+  .dark .bw-terminal .xterm .xterm-cursor-layer .xterm-cursor-underline:not(.xterm-hidden-cursor) {
     background-color: #ffffff !important;
+    color: #1f2937 !important;
+    opacity: 1 !important;
   }
-  .dark .bw-terminal .xterm .xterm-cursor .xterm-cursor-outline,
-  .dark .bw-terminal .xterm .xterm-cursor .xterm-cursor-bar,
-  .dark .bw-terminal .xterm .xterm-cursor .xterm-cursor-underline {
-    border-color: #ffffff !important;
+  .dark .bw-terminal .xterm .xterm-rows span.xterm-decoration-top,
+  .dark .bw-terminal .xterm .xterm-rows span.xterm-decoration-bottom,
+  .dark .bw-terminal .xterm .xterm-rows span.xterm-decoration-left,
+  .dark .bw-terminal .xterm .xterm-rows span.xterm-decoration-right {
+    background-color: rgba(255, 255, 255, 0.36) !important;
+    color: #1f2937 !important;
+  }
+  .dark .bw-terminal .xterm .xterm-rows span.xterm-cursor {
     background-color: #ffffff !important;
+    color: #1f2937 !important;
   }
   .logo-shimmer-container {
     position: relative;
